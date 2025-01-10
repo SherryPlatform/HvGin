@@ -30,7 +30,7 @@
 #include <linux/vmalloc.h>
 #include <linux/slab.h>
 
-#include "../hv/hyperv_vmbus.h"
+#include "hyperv_vmbus.h"
 
 #define DRIVER_VERSION	"0.02.1"
 #define DRIVER_AUTHOR	"Stephen Hemminger <sthemmin at microsoft.com>"
