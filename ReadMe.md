@@ -1,6 +1,8 @@
 ﻿# HvGin
 
-**H**yper-**V** Enhanced **G**uest **In**tegrations for Linux
+Hyper-V Enhanced Guest Integrations for Linux
+
+(*Hv -> Hyper-V, G -> Guest, i -> Integrations, n -> Linux*)
 
 Work In Progress
 
