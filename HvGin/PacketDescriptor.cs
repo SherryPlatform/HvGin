@@ -7,11 +7,11 @@ namespace HvGin
     {
         private ushort RawType;
 
-        public ushort DataOffset8;
+        private ushort RawDataOffset8;
 
-        public ushort Length8;
+        private ushort RawLength8;
 
-        public ushort Flags;
+        private ushort RawFlags;
 
         public ulong TransactionId;
 
@@ -26,6 +26,53 @@ namespace HvGin
             set
             {
                 RawType = Convert.ToUInt16(value);
+            }
+        }
+
+        public int DataOffset
+        {
+            get
+            {
+                return Convert.ToInt32(RawDataOffset8 << 3);
+            }
+            set
+            {
+                RawDataOffset8 = Math.Min(
+                    Convert.ToUInt16(Utilities.GetAlignedSize(value, 8) >> 3),
+                    ushort.MaxValue);
+            }
+        }
+
+        public int Length
+        {
+            get
+            {
+                return Convert.ToInt32(RawLength8 << 3);
+            }
+            set
+            {
+                RawLength8 = Math.Min(
+                    Convert.ToUInt16(Utilities.GetAlignedSize(value, 8) >> 3),
+                    ushort.MaxValue);
+            }
+        }
+
+        public bool CompletionRequested
+        {
+            get
+            {
+                return (RawFlags & 1) != 0;
+            }
+            set
+            {
+                if (value)
+                {
+                    RawFlags |= 1;
+                }
+                else
+                {
+                    RawFlags &= 0xFFFE;
+                }
             }
         }
     };
