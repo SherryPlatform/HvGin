@@ -2,6 +2,8 @@
 {
     internal class UioHv
     {
+        public static readonly int PageSize = Environment.SystemPageSize;
+
         public static UioDeviceInformation GetDeviceInformation(
             string InstanceId)
         {
@@ -33,7 +35,7 @@
                         // mapping of your device you want to map. To map the
                         // memory of mapping N, you have to use N times the page
                         // size as your offset.
-                        Item.Offset = i * Environment.SystemPageSize;
+                        Item.Offset = i * PageSize;
                         Item.Size = Convert.ToInt64(File.ReadAllLines(
                             CurrentPath + "/size")[0], 16);
                         Result.MemoryMap.Add(Item);
