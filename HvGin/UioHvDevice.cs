@@ -19,49 +19,45 @@ namespace HvGin
 
         private FileStream DeviceFileStream;
         private MemoryMappedFile DeviceMappedFile;
-
-        private MemoryMappedViewAccessor OutgoingControlAccessor;
-        private MemoryMappedViewAccessor OutgoingDataAccessor;
-        private MemoryMappedViewAccessor IncomingControlAccessor;
-        private MemoryMappedViewAccessor IncomingDataAccessor;
+        private MemoryMappedViewAccessor Accessor;
 
         private RingControlBlock GetRingControlBlock(
-            MemoryMappedViewAccessor ControlAccessor)
+            int AccessorOffset)
         {
-            if (ControlAccessor != OutgoingControlAccessor &&
-                ControlAccessor != IncomingControlAccessor)
+            if (AccessorOffset != OutgoingControlOffset &&
+                AccessorOffset != IncomingControlOffset)
             {
                 throw new ArgumentException();
             }
             RingControlBlock Result;
-            ControlAccessor.Read(0, out Result);
+            Accessor.Read(AccessorOffset, out Result);
             return Result;
         }
 
         private void UpdateReadOffset(
-            MemoryMappedViewAccessor ControlAccessor,
+            int AccessorOffset,
             uint Offset)
         {
-            if (ControlAccessor != OutgoingControlAccessor &&
-                ControlAccessor != IncomingControlAccessor)
+            if (AccessorOffset != OutgoingControlOffset &&
+                AccessorOffset != IncomingControlOffset)
             {
                 throw new ArgumentException();
             }
             // Write to RingControlBlock's Out field.
-            ControlAccessor.Write(sizeof(uint), Offset);
+            Accessor.Write(AccessorOffset + sizeof(uint), Offset);
         }
 
         private void UpdateWriteOffset(
-            MemoryMappedViewAccessor ControlAccessor,
+            int AccessorOffset,
             uint Offset)
         {
-            if (ControlAccessor != OutgoingControlAccessor &&
-                ControlAccessor != IncomingControlAccessor)
+            if (AccessorOffset != OutgoingControlOffset &&
+                AccessorOffset != IncomingControlOffset)
             {
                 throw new ArgumentException();
             }
             // Write to RingControlBlock's In field.
-            ControlAccessor.Write(0, Offset);
+            Accessor.Write(AccessorOffset, Offset);
         }
 
         private (int Read, int Write) GetAvailableSizeInformation(
@@ -82,7 +78,7 @@ namespace HvGin
             int Size)
         {
             RingControlBlock ControlBlock =
-                GetRingControlBlock(IncomingControlAccessor);
+                GetRingControlBlock(IncomingControlOffset);
             int AvailableSize =
                 GetAvailableSizeInformation(ControlBlock).Read;
             int ReadSize = Math.Min(Size, AvailableSize);
@@ -99,21 +95,21 @@ namespace HvGin
                     SecondReadSize = ReadSize - FragileSize;
                 }
             }
-            IncomingDataAccessor.ReadArray(
-                ControlBlock.Out,
+            Accessor.ReadArray(
+                IncomingDataOffset + ControlBlock.Out,
                 Data,
                 0,
                 FirstReadSize);
             if (SecondReadSize > 0)
             {
-                IncomingDataAccessor.ReadArray(
-                    0,
+                Accessor.ReadArray(
+                    IncomingDataOffset,
                     Data,
                     FirstReadSize,
                     SecondReadSize);
             }
             UpdateReadOffset(
-                IncomingControlAccessor,
+                IncomingControlOffset,
                 Convert.ToUInt32(
                     SecondReadSize > 0
                     ? SecondReadSize
@@ -125,7 +121,7 @@ namespace HvGin
             byte[] Content)
         {
             RingControlBlock ControlBlock =
-               GetRingControlBlock(OutgoingControlAccessor);
+               GetRingControlBlock(OutgoingControlOffset);
             int AvailableSize =
                 GetAvailableSizeInformation(ControlBlock).Write;
             int WriteSize = Math.Min(
@@ -143,21 +139,21 @@ namespace HvGin
                     SecondWriteSize = WriteSize - FragileSize;
                 }
             }
-            OutgoingDataAccessor.WriteArray(
-                ControlBlock.In,
+            Accessor.WriteArray(
+                OutgoingDataOffset + ControlBlock.In,
                 Content,
                 0,
                 FirstWriteSize);
             if (SecondWriteSize > 0)
             {
-                OutgoingDataAccessor.WriteArray(
-                    0,
+                Accessor.WriteArray(
+                    OutgoingDataOffset,
                     Content,
                     FirstWriteSize,
                     SecondWriteSize);
             }
             UpdateWriteOffset(
-                OutgoingControlAccessor,
+                OutgoingControlOffset,
                 Convert.ToUInt32(
                     SecondWriteSize > 0
                     ? SecondWriteSize
@@ -251,19 +247,9 @@ namespace HvGin
                     MemoryMappedFileAccess.ReadWrite,
                     HandleInheritability.None,
                     false);
-
-                OutgoingControlAccessor = DeviceMappedFile.CreateViewAccessor(
-                    OutgoingControlOffset,
-                    ControlMaximumSize);
-                OutgoingDataAccessor = DeviceMappedFile.CreateViewAccessor(
-                    OutgoingDataOffset,
-                    DataMaximumSize);
-                IncomingControlAccessor = DeviceMappedFile.CreateViewAccessor(
-                    IncomingControlOffset,
-                    ControlMaximumSize);
-                IncomingDataAccessor = DeviceMappedFile.CreateViewAccessor(
-                    IncomingDataOffset,
-                    DataMaximumSize);
+                Accessor = DeviceMappedFile.CreateViewAccessor(
+                    MapItem.Offset,
+                    MapItem.Size);
 
                 return;
             }
