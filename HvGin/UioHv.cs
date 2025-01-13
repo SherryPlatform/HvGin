@@ -2,7 +2,7 @@
 {
     internal class UioHv
     {
-        public static UioDeviceInformation? GetDeviceInformation(
+        public static UioDeviceInformation GetDeviceInformation(
             string InstanceId)
         {
             foreach (DirectoryInfo Instance in new DirectoryInfo(string.Format(
@@ -15,23 +15,33 @@
                     UioDeviceInformation Result = new UioDeviceInformation();
                     Result.DeviceObjectPath = InstanceName;
                     Result.MemoryMap = new List<UioDeviceMemoryMapItem>();
-                    foreach (DirectoryInfo MapInstance in new DirectoryInfo(
-                        Instance.FullName + "/maps").GetDirectories())
+                    for (int i = 0; ; ++i)
                     {
+                        string CurrentPath = string.Format(
+                            "{0}/maps/map{1}",
+                            Instance.FullName,
+                            i);
+                        if (!Directory.Exists(CurrentPath))
+                        {
+                            break;
+                        }
                         UioDeviceMemoryMapItem Item = new UioDeviceMemoryMapItem();
                         Item.Name = File.ReadAllLines(
-                            MapInstance.FullName + "/name")[0];
-                        Item.Size = long.Parse(File.ReadAllLines(
-                            MapInstance.FullName + "/size")[0]);
-                        Item.Offset = long.Parse(File.ReadAllLines(
-                            MapInstance.FullName + "/offset")[0]);
+                            CurrentPath + "/name")[0];
+                        // The parameter offset of the mmap() call has a special
+                        // meaning for UIO devices: It is used to select which
+                        // mapping of your device you want to map. To map the
+                        // memory of mapping N, you have to use N times the page
+                        // size as your offset.
+                        Item.Offset = i * Environment.SystemPageSize;
+                        Item.Size = Convert.ToInt64(File.ReadAllLines(
+                            CurrentPath + "/size")[0], 16);
                         Result.MemoryMap.Add(Item);
                     }
                     return Result;
                 }
             }
-
-            return null;
+            throw new Exception("Hyper-V VMBus device not found.");
         }
     }
 }
