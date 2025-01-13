@@ -45,5 +45,25 @@
             }
             throw new Exception("Hyper-V VMBus device not found.");
         }
+
+        public static void RegisterDevice(
+            string ClassId)
+        {
+            try
+            {
+                File.WriteAllText(
+                    "/sys/bus/vmbus/drivers/uio_hv_generic/new_id",
+                    ClassId);
+            }
+            catch (Exception e)
+            {
+                const int EEXIST = 17;
+                if (e.HResult != EEXIST)
+                {
+                    // Rethrow if not EEXIST a.k.a. already registered.
+                    throw;
+                }
+            }
+        }
     }
 }
