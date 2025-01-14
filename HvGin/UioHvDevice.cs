@@ -204,16 +204,50 @@ namespace HvGin
             }
         }
 
-        private void SignalHost()
+        [DllImport("libc", SetLastError = true)]
+        private static extern long write(
+            int fd,
+            byte[] buffer,
+            ulong count);
+
+        public void SignalHost()
         {
             byte[] Bytes = BitConverter.GetBytes(1);
-            DeviceFileStream.Write(Bytes, 0, Bytes.Length);
+            long result = write(
+                DeviceFileStream.SafeFileHandle.DangerousGetHandle().ToInt32(),
+                Bytes,
+                Convert.ToUInt64(Bytes.Length));
+            if (result != Bytes.Length)
+            {
+                throw new Exception("SignalHost Failed");
+            }
         }
 
-        private void WaitHost()
+        [DllImport("libc", SetLastError = true)]
+        private static extern long pread(
+            int fd,
+            byte[] buffer,
+            ulong count,
+            long offset);
+
+        public void WaitHost()
         {
             byte[] Bytes = BitConverter.GetBytes(1);
-            DeviceFileStream.Read(Bytes, 0, Bytes.Length);
+            long result = pread(
+                DeviceFileStream.SafeFileHandle.DangerousGetHandle().ToInt32(),
+                Bytes,
+                Convert.ToUInt64(Bytes.Length),
+                0);
+            if (result < 0)
+            {
+                const int EINTR = 4;
+                const int EAGAIN = 11;
+                int Errno = Marshal.GetLastWin32Error();
+                if (Errno == EINTR || Errno == EAGAIN)
+                {
+                    throw new Exception("WaitHost Failed");
+                }
+            }
         }
 
         public UioHvDevice(
@@ -250,6 +284,14 @@ namespace HvGin
                 Accessor = DeviceMappedFile.CreateViewAccessor(
                     MapItem.Offset,
                     MapItem.Size);
+
+                byte[] RawMask = BitConverter.GetBytes(0);
+                // Write to RingControlBlock's InterruptMask field.
+                Accessor.WriteArray(
+                    IncomingControlOffset + (2 * sizeof(uint)),
+                    RawMask,
+                    0,
+                    RawMask.Length);
 
                 return;
             }
