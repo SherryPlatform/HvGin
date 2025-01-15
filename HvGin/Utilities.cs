@@ -23,5 +23,18 @@ namespace HvGin
             Handle.Free();
             return Result;
         }
+
+        public static byte[] StructureToBytes<T>(
+            T Structure) where T : struct
+        {
+            byte[] Result = new byte[Marshal.SizeOf<T>()];
+            GCHandle Handle = GCHandle.Alloc(Result, GCHandleType.Pinned);
+            Marshal.StructureToPtr(
+                Structure,
+                Handle.AddrOfPinnedObject(),
+                false);
+            Handle.Free();
+            return Result;
+        }
     }
 }
