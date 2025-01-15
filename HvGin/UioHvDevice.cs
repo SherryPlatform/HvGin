@@ -123,7 +123,7 @@ namespace HvGin
             RingControlBlock ControlBlock =
                GetRingControlBlock(OutgoingControlOffset);
             int AvailableSize =
-                GetAvailableSizeInformation(ControlBlock).Write;
+                GetAvailableSizeInformation(ControlBlock).Write - sizeof(ulong);
             int WriteSize = Math.Min(
                 Convert.ToInt32(Content.Length),
                 AvailableSize);
@@ -152,12 +152,19 @@ namespace HvGin
                     FirstWriteSize,
                     SecondWriteSize);
             }
+            uint FinalWriteOffset = Convert.ToUInt32(
+                SecondWriteSize > 0
+                ? SecondWriteSize
+                : ControlBlock.In + WriteSize);
+            Accessor.WriteArray(
+                OutgoingDataOffset + FinalWriteOffset,
+                BitConverter.GetBytes(ControlBlock.In),
+                0,
+                sizeof(uint));
+            FinalWriteOffset += sizeof(ulong);
             UpdateWriteOffset(
                 OutgoingControlOffset,
-                Convert.ToUInt32(
-                    SecondWriteSize > 0
-                    ? SecondWriteSize
-                    : ControlBlock.In + WriteSize));
+                FinalWriteOffset);
             return WriteSize;
         }
 
@@ -301,12 +308,17 @@ namespace HvGin
         public void Send(
             byte[] Content)
         {
+            int DescriptorSize = Marshal.SizeOf<PacketDescriptor>();
+            int HeaderSize = Marshal.SizeOf<PipeHeader>();
             PacketDescriptor Descriptor = new PacketDescriptor();
             Descriptor.Type = PacketType.DataInBand;
-            Descriptor.DataOffset = Marshal.SizeOf<PacketDescriptor>();
-            Descriptor.Length = Descriptor.DataOffset + Content.Length;
+            Descriptor.DataOffset = DescriptorSize;
+            Descriptor.Length = DescriptorSize + HeaderSize + Content.Length;
             Descriptor.CompletionRequested = false;
             Descriptor.TransactionId = ulong.MaxValue;
+            PipeHeader Header = new PipeHeader();
+            Header.Type = PipeMessageType.Data;
+            Header.DataSize = Convert.ToUInt32(Content.Length);
             byte[] Current = new byte[Descriptor.Length];
             GCHandle DescriptorHandle = GCHandle.Alloc(
                 Descriptor,
@@ -315,9 +327,18 @@ namespace HvGin
                 DescriptorHandle.AddrOfPinnedObject(),
                 Current,
                 0,
-                Descriptor.DataOffset);
+                DescriptorSize);
             DescriptorHandle.Free();
-            Content.CopyTo(Current, Descriptor.DataOffset);
+            GCHandle HeaderHandle = GCHandle.Alloc(
+                Header,
+                GCHandleType.Pinned);
+            Marshal.Copy(
+                HeaderHandle.AddrOfPinnedObject(),
+                Current,
+                DescriptorSize,
+                HeaderSize);
+            HeaderHandle.Free();
+            Content.CopyTo(Current, DescriptorSize + HeaderSize);
             WriteBytes(Current);
             SignalHost();
         }
@@ -325,22 +346,30 @@ namespace HvGin
         public byte[] Receive()
         {
             WaitHost();
-            PacketDescriptor Descriptor = new PacketDescriptor();
-            byte[] Current = ReadBytes(Marshal.SizeOf<PacketDescriptor>());
-            GCHandle DescriptorHandle = GCHandle.Alloc(
-                Descriptor,
-                GCHandleType.Pinned);
-            Marshal.Copy(
-                Current,
-                0,
-                DescriptorHandle.AddrOfPinnedObject(),
-                Current.Length);
-            DescriptorHandle.Free();
+            int DescriptorSize = Marshal.SizeOf<PacketDescriptor>();
+            int HeaderSize = Marshal.SizeOf<PipeHeader>();
+            PacketDescriptor Descriptor =
+                Utilities.BytesToStructure<PacketDescriptor>(
+                    ReadBytes(DescriptorSize));
             if (Descriptor.Type != PacketType.DataInBand)
             {
-                throw new Exception("Unexpected packet type");
+                throw new Exception("Unexpected PacketType");
             }
-            return ReadBytes(Descriptor.Length - Descriptor.DataOffset);
+            byte[] PacketContent = ReadBytes(
+                Descriptor.Length - Descriptor.DataOffset + sizeof(ulong));
+            PipeHeader Header = Utilities.BytesToStructure<PipeHeader>(
+                PacketContent);
+            if (Header.Type != PipeMessageType.Data)
+            {
+                throw new Exception("Unexpected PipeMessageType");
+            }
+            if (PacketContent.Length - HeaderSize < Header.DataSize)
+            {
+                throw new Exception("Unexpected DataSize");
+            }
+            byte[] Content = new byte[Header.DataSize];
+            Array.Copy(PacketContent, HeaderSize, Content, 0, Header.DataSize);
+            return Content;
         }
     }
 }
