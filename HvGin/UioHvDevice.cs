@@ -1,4 +1,4 @@
-﻿using System.Drawing;
+﻿using Microsoft.Win32.SafeHandles;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
 
@@ -17,9 +17,18 @@ namespace HvGin
         private int IncomingControlOffset;
         private int IncomingDataOffset;
 
-        private FileStream DeviceFileStream;
         private MemoryMappedFile DeviceMappedFile;
         private MemoryMappedViewAccessor Accessor;
+
+        private int FileDescriptor
+        {
+            get
+            {
+                SafeMemoryMappedFileHandle SafeHandle =
+                DeviceMappedFile.SafeMemoryMappedFileHandle;
+                return SafeHandle.DangerousGetHandle().ToInt32();
+            }
+        }
 
         private RingControlBlock GetRingControlBlock(
             int AccessorOffset)
@@ -221,7 +230,7 @@ namespace HvGin
         {
             byte[] Bytes = BitConverter.GetBytes(1);
             long result = write(
-                DeviceFileStream.SafeFileHandle.DangerousGetHandle().ToInt32(),
+                FileDescriptor,
                 Bytes,
                 Convert.ToUInt64(Bytes.Length));
             if (result != Bytes.Length)
@@ -241,7 +250,7 @@ namespace HvGin
         {
             byte[] Bytes = BitConverter.GetBytes(1);
             long result = pread(
-                DeviceFileStream.SafeFileHandle.DangerousGetHandle().ToInt32(),
+                FileDescriptor,
                 Bytes,
                 Convert.ToUInt64(Bytes.Length),
                 0);
@@ -250,7 +259,7 @@ namespace HvGin
                 const int EINTR = 4;
                 const int EAGAIN = 11;
                 int Errno = Marshal.GetLastWin32Error();
-                if (Errno == EINTR || Errno == EAGAIN)
+                if (Errno != EINTR && Errno != EAGAIN)
                 {
                     throw new Exception("WaitHost Failed");
                 }
@@ -276,18 +285,12 @@ namespace HvGin
                 OutgoingDataOffset = OutgoingControlOffset + ControlMaximumSize;
                 IncomingControlOffset = OutgoingControlOffset + RingBufferSize;
                 IncomingDataOffset = IncomingControlOffset + ControlMaximumSize;
-
-                DeviceFileStream = new FileStream(
+                DeviceMappedFile = MemoryMappedFile.CreateFromFile(
                     DeviceInformation.DeviceObjectPath,
                     FileMode.Open,
-                    FileAccess.ReadWrite);
-                DeviceMappedFile = MemoryMappedFile.CreateFromFile(
-                    DeviceFileStream,
                     null,
                     MapItem.Size,
-                    MemoryMappedFileAccess.ReadWrite,
-                    HandleInheritability.None,
-                    false);
+                    MemoryMappedFileAccess.ReadWrite);
                 Accessor = DeviceMappedFile.CreateViewAccessor(
                     MapItem.Offset,
                     MapItem.Size);
