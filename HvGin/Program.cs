@@ -4,7 +4,11 @@
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("Hello, World!");
+            SynthRdp.Start();
+            while (SynthRdp.IsRunning)
+            {
+                Thread.Sleep(100);
+            }
         }
     }
 }
