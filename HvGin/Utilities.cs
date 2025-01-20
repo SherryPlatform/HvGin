@@ -36,5 +36,11 @@ namespace HvGin
             Handle.Free();
             return Result;
         }
+
+        public static string BytesToPrintableString(
+            byte[] Bytes)
+        {
+            return BitConverter.ToString(Bytes).Replace("-", " ");
+        }
     }
 }
