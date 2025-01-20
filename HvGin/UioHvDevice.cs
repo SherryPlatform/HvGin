@@ -43,19 +43,6 @@ namespace HvGin
             return Result;
         }
 
-        private void UpdateReadOffset(
-            int AccessorOffset,
-            uint Offset)
-        {
-            if (AccessorOffset != OutgoingControlOffset &&
-                AccessorOffset != IncomingControlOffset)
-            {
-                throw new ArgumentException();
-            }
-            // Write to RingControlBlock's Out field.
-            Accessor.Write(AccessorOffset + sizeof(uint), Offset);
-        }
-
         private void UpdateWriteOffset(
             int AccessorOffset,
             uint Offset)
@@ -83,25 +70,27 @@ namespace HvGin
             return (DataMaximumSize - WritableSize, WritableSize);
         }
 
-        private byte[] ReadAvailableBytes(
-            int Size)
+        private byte[] PeekAvailableBytes()
         {
             RingControlBlock ControlBlock =
                 GetRingControlBlock(IncomingControlOffset);
             int AvailableSize =
                 GetAvailableSizeInformation(ControlBlock).Read;
-            int ReadSize = Math.Min(Size, AvailableSize);
-            byte[] Data = new byte[ReadSize];
-            int FirstReadSize = ReadSize;
+            if (AvailableSize == 0)
+            {
+                return Array.Empty<byte>();
+            }
+            byte[] Data = new byte[AvailableSize];
+            int FirstReadSize = AvailableSize;
             int SecondReadSize = 0;
             if (ControlBlock.In < ControlBlock.Out)
             {
                 int FragileSize =
                     DataMaximumSize - Convert.ToInt32(ControlBlock.Out);
-                if (FragileSize < ReadSize)
+                if (FragileSize < AvailableSize)
                 {
                     FirstReadSize = FragileSize;
-                    SecondReadSize = ReadSize - FragileSize;
+                    SecondReadSize = AvailableSize - FragileSize;
                 }
             }
             Accessor.ReadArray(
@@ -117,13 +106,34 @@ namespace HvGin
                     FirstReadSize,
                     SecondReadSize);
             }
-            UpdateReadOffset(
-                IncomingControlOffset,
-                Convert.ToUInt32(
-                    SecondReadSize > 0
-                    ? SecondReadSize
-                    : ControlBlock.Out + ReadSize));
             return Data;
+        }
+
+        private void CommitReadOperation(
+            int ProcessedSize)
+        {
+            RingControlBlock ControlBlock =
+                GetRingControlBlock(IncomingControlOffset);
+            int AvailableSize =
+                GetAvailableSizeInformation(ControlBlock).Read;
+            if (ProcessedSize > AvailableSize)
+            {
+                throw new ArgumentException();
+            }
+            uint FinalOut = Convert.ToUInt32(ControlBlock.Out + ProcessedSize);
+            if (ControlBlock.In < ControlBlock.Out)
+            {
+                int FragileSize =
+                    DataMaximumSize - Convert.ToInt32(ControlBlock.Out);
+                if (FragileSize < ProcessedSize)
+                {
+                    FinalOut = Convert.ToUInt32(ProcessedSize - FragileSize);
+                }
+            }
+            // Write to RingControlBlock's Out field.
+            Accessor.Write(IncomingControlOffset + sizeof(uint), FinalOut);
+            // Signal to Host
+            SignalHost();
         }
 
         private int WriteAvailableBytes(
@@ -175,25 +185,6 @@ namespace HvGin
                 OutgoingControlOffset,
                 FinalWriteOffset);
             return WriteSize;
-        }
-
-        private byte[] ReadBytes(
-            int Size)
-        {
-            byte[] Data = new byte[Size];
-            int ProcessedSize = 0;
-            int UnprocessedSize = Size;
-            while (UnprocessedSize != 0)
-            {
-                byte[] Current = ReadAvailableBytes(UnprocessedSize);
-                if (Current.Length > 0)
-                {
-                    Current.CopyTo(Data, ProcessedSize);
-                    ProcessedSize += Current.Length;
-                    UnprocessedSize -= Current.Length;
-                }
-            }
-            return Data;
         }
 
         private void WriteBytes(
@@ -348,30 +339,38 @@ namespace HvGin
 
         public byte[] Receive()
         {
-            WaitHost();
+            byte[] RawBytes = PeekAvailableBytes();
+            if (RawBytes.Length == 0)
+            {
+                WaitHost();
+                return Array.Empty<byte>();
+            }
             int DescriptorSize = Marshal.SizeOf<PacketDescriptor>();
             int HeaderSize = Marshal.SizeOf<PipeHeader>();
             PacketDescriptor Descriptor =
                 Utilities.BytesToStructure<PacketDescriptor>(
-                    ReadBytes(DescriptorSize));
+                    RawBytes.Take(DescriptorSize).ToArray());
             if (Descriptor.Type != PacketType.DataInBand)
             {
                 throw new Exception("Unexpected PacketType");
             }
-            byte[] PacketContent = ReadBytes(
-                Descriptor.Length - Descriptor.DataOffset + sizeof(ulong));
-            PipeHeader Header = Utilities.BytesToStructure<PipeHeader>(
-                PacketContent);
+            PipeHeader Header =
+                Utilities.BytesToStructure<PipeHeader>(
+                    RawBytes.Skip(DescriptorSize).Take(HeaderSize).ToArray());
             if (Header.Type != PipeMessageType.Data)
             {
                 throw new Exception("Unexpected PipeMessageType");
             }
-            if (PacketContent.Length - HeaderSize < Header.DataSize)
+            int ContentSize = Convert.ToInt32(Header.DataSize);
+            byte[] RawContent =
+                RawBytes.Skip(DescriptorSize + HeaderSize).ToArray();
+            if (RawContent.Length < ContentSize)
             {
-                throw new Exception("Unexpected DataSize");
+                WaitHost();
+                return Array.Empty<byte>();
             }
-            byte[] Content = new byte[Header.DataSize];
-            Array.Copy(PacketContent, HeaderSize, Content, 0, Header.DataSize);
+            byte[] Content = RawContent.Take(ContentSize).ToArray();
+            CommitReadOperation(Descriptor.Length + sizeof(ulong));
             return Content;
         }
     }
