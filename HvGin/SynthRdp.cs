@@ -92,10 +92,9 @@ namespace HvGin
                     Content[15] = 0x00;
                     if (DebugMode)
                     {
-                        Console.WriteLine("====== VMBus -> TCP ======");
-                        Console.WriteLine(
-                            Utilities.BytesToPrintableString(Content));
-                        Console.WriteLine("==========================");
+                        Utilities.PrintBytes(
+                            "VMBus -> TCP",
+                            Content);
                     }
                     RdpServerSocket.Send(Content);
                 }
@@ -119,10 +118,9 @@ namespace HvGin
                             }
                             if (DebugMode)
                             {
-                                Console.WriteLine("====== VMBus -> TCP ======");
-                                Console.WriteLine(
-                                    Utilities.BytesToPrintableString(Content));
-                                Console.WriteLine("==========================");
+                                Utilities.PrintBytes(
+                                    "VMBus -> TCP",
+                                    Content);
                             }
                             RdpServerSocket.Send(Content);
                         }
@@ -150,15 +148,14 @@ namespace HvGin
                                 Buffer,
                                 Buffer.Length,
                                 SocketFlags.None);
+                            byte[] Content = Buffer.Take(Count).ToArray();
                             if (DebugMode)
                             {
-                                Console.WriteLine("====== TCP -> VMBus ======");
-                                Console.WriteLine(
-                                    Utilities.BytesToPrintableString(
-                                        Buffer.Take(Count).ToArray()));
-                                Console.WriteLine("==========================");
+                                Utilities.PrintBytes(
+                                    "TCP -> VMBus",
+                                    Content);
                             }
-                            DataChannel.Send(Buffer.Take(Count).ToArray());
+                            DataChannel.Send(Content);
                         }
                         catch (Exception e)
                         {

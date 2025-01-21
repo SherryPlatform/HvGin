@@ -37,10 +37,19 @@ namespace HvGin
             return Result;
         }
 
-        public static string BytesToPrintableString(
+        public static void PrintBytes(
+            string Tag,
             byte[] Bytes)
         {
-            return BitConverter.ToString(Bytes).Replace("-", " ");
+            string UpperTag = string.Format("======== {0} ========", Tag);
+            string LowerTag = string.Empty;
+            for (int i = 0; i < UpperTag.Length; ++i)
+            {
+                LowerTag += "=";
+            }
+            Console.WriteLine(UpperTag);
+            Console.WriteLine(BitConverter.ToString(Bytes).Replace("-", " "));
+            Console.WriteLine(LowerTag);
         }
     }
 }
