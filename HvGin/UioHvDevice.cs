@@ -43,19 +43,6 @@ namespace HvGin
             return Result;
         }
 
-        private void UpdateWriteOffset(
-            int AccessorOffset,
-            uint Offset)
-        {
-            if (AccessorOffset != OutgoingControlOffset &&
-                AccessorOffset != IncomingControlOffset)
-            {
-                throw new ArgumentException();
-            }
-            // Write to RingControlBlock's In field.
-            Accessor.Write(AccessorOffset, Offset);
-        }
-
         private (int Read, int Write) GetAvailableSizeInformation(
             RingControlBlock ControlBlock)
         {
@@ -70,7 +57,7 @@ namespace HvGin
             return (DataMaximumSize - WritableSize, WritableSize);
         }
 
-        private byte[] PeekAvailableBytes()
+        private byte[] GetPacket()
         {
             RingControlBlock ControlBlock =
                 GetRingControlBlock(IncomingControlOffset);
@@ -80,7 +67,7 @@ namespace HvGin
             {
                 return Array.Empty<byte>();
             }
-            byte[] Data = new byte[AvailableSize];
+            byte[] RawBytes = new byte[AvailableSize];
             int FirstReadSize = AvailableSize;
             int SecondReadSize = 0;
             if (ControlBlock.In < ControlBlock.Out)
@@ -95,94 +82,100 @@ namespace HvGin
             }
             Accessor.ReadArray(
                 IncomingDataOffset + ControlBlock.Out,
-                Data,
+                RawBytes,
                 0,
                 FirstReadSize);
             if (SecondReadSize > 0)
             {
                 Accessor.ReadArray(
                     IncomingDataOffset,
-                    Data,
+                    RawBytes,
                     FirstReadSize,
                     SecondReadSize);
             }
-            return Data;
-        }
-
-        private void CommitReadOperation(
-            int ProcessedSize)
-        {
-            RingControlBlock ControlBlock =
-                GetRingControlBlock(IncomingControlOffset);
-            int AvailableSize =
-                GetAvailableSizeInformation(ControlBlock).Read;
-            if (ProcessedSize > AvailableSize)
+            PacketDescriptor Descriptor =
+                Utilities.BytesToStructure<PacketDescriptor>(RawBytes);
+            int Size = Descriptor.Length + sizeof(ulong);
+            if (RawBytes.Length < Size)
             {
-                throw new ArgumentException();
+                throw new Exception("Unexpected PacketSize");
             }
-            uint FinalOut = Convert.ToUInt32(ControlBlock.Out + ProcessedSize);
+            if (Descriptor.Type != PacketType.DataInBand)
+            {
+                throw new Exception("Unexpected PacketType");
+            }
+            uint FinalOut = Convert.ToUInt32(ControlBlock.Out + Size);
             if (ControlBlock.In < ControlBlock.Out)
             {
                 int FragileSize =
                     DataMaximumSize - Convert.ToInt32(ControlBlock.Out);
-                if (FragileSize < ProcessedSize)
+                if (FragileSize < Size)
                 {
-                    FinalOut = Convert.ToUInt32(ProcessedSize - FragileSize);
+                    FinalOut = Convert.ToUInt32(Size - FragileSize);
                 }
             }
             // Write to RingControlBlock's Out field.
             Accessor.Write(IncomingControlOffset + sizeof(uint), FinalOut);
+            return RawBytes.Skip(Descriptor.DataOffset).ToArray();
         }
 
-        private int WriteAvailableBytes(
+        private void PutPacket(
             byte[] Content)
         {
+            PacketDescriptor Descriptor = new PacketDescriptor();
+            Descriptor.Type = PacketType.DataInBand;
+            Descriptor.DataOffset = Marshal.SizeOf<PacketDescriptor>();
+            Descriptor.Length = Descriptor.DataOffset + Content.Length;
+            Descriptor.CompletionRequested = false;
+            Descriptor.TransactionId = ulong.MaxValue;
+            byte[] RawBytes = new byte[Descriptor.Length];
+            Utilities.StructureToBytes(Descriptor).CopyTo(RawBytes, 0);
+            Content.CopyTo(RawBytes, Descriptor.DataOffset);
             RingControlBlock ControlBlock =
                GetRingControlBlock(OutgoingControlOffset);
             int AvailableSize =
-                GetAvailableSizeInformation(ControlBlock).Write - sizeof(ulong);
-            int WriteSize = Math.Min(
-                Convert.ToInt32(Content.Length),
-                AvailableSize);
-            int FirstWriteSize = WriteSize;
+                GetAvailableSizeInformation(ControlBlock).Write;
+            if (AvailableSize < RawBytes.Length + sizeof(ulong))
+            {
+                throw new Exception("Insufficient Space");
+            }
+            int FirstWriteSize = RawBytes.Length;
             int SecondWriteSize = 0;
             if (ControlBlock.In >= ControlBlock.Out)
             {
                 int FragileSize =
                     DataMaximumSize - Convert.ToInt32(ControlBlock.In);
-                if (FragileSize < WriteSize)
+                if (FragileSize < RawBytes.Length)
                 {
                     FirstWriteSize = FragileSize;
-                    SecondWriteSize = WriteSize - FragileSize;
+                    SecondWriteSize = RawBytes.Length - FragileSize;
                 }
             }
             Accessor.WriteArray(
                 OutgoingDataOffset + ControlBlock.In,
-                Content,
+                RawBytes,
                 0,
                 FirstWriteSize);
             if (SecondWriteSize > 0)
             {
                 Accessor.WriteArray(
                     OutgoingDataOffset,
-                    Content,
+                    RawBytes,
                     FirstWriteSize,
                     SecondWriteSize);
             }
-            uint FinalWriteOffset = Convert.ToUInt32(
+            uint FinalIn = Convert.ToUInt32(
                 SecondWriteSize > 0
                 ? SecondWriteSize
-                : ControlBlock.In + WriteSize);
+                : ControlBlock.In + RawBytes.Length);
             Accessor.WriteArray(
-                OutgoingDataOffset + FinalWriteOffset,
+                OutgoingDataOffset + FinalIn,
                 BitConverter.GetBytes(ControlBlock.In),
                 0,
                 sizeof(uint));
-            FinalWriteOffset += sizeof(ulong);
-            UpdateWriteOffset(
-                OutgoingControlOffset,
-                FinalWriteOffset);
-            return WriteSize;
+            FinalIn += sizeof(ulong);
+            // Write to RingControlBlock's In field.
+            Accessor.Write(OutgoingControlOffset, FinalIn);
         }
 
         [DllImport("libc", SetLastError = true)]
@@ -276,75 +269,38 @@ namespace HvGin
         public void Send(
             byte[] Content)
         {
-            int DescriptorSize = Marshal.SizeOf<PacketDescriptor>();
             int HeaderSize = Marshal.SizeOf<PipeHeader>();
-            PacketDescriptor Descriptor = new PacketDescriptor();
-            Descriptor.Type = PacketType.DataInBand;
-            Descriptor.DataOffset = DescriptorSize;
-            Descriptor.Length = DescriptorSize + HeaderSize + Content.Length;
-            Descriptor.CompletionRequested = false;
-            Descriptor.TransactionId = ulong.MaxValue;
             PipeHeader Header = new PipeHeader();
             Header.Type = PipeMessageType.Data;
             Header.DataSize = Convert.ToUInt32(Content.Length);
-            byte[] Current = new byte[Descriptor.Length];
-            GCHandle DescriptorHandle = GCHandle.Alloc(
-                Descriptor,
-                GCHandleType.Pinned);
-            Marshal.Copy(
-                DescriptorHandle.AddrOfPinnedObject(),
-                Current,
-                0,
-                DescriptorSize);
-            DescriptorHandle.Free();
-            GCHandle HeaderHandle = GCHandle.Alloc(
-                Header,
-                GCHandleType.Pinned);
-            Marshal.Copy(
-                HeaderHandle.AddrOfPinnedObject(),
-                Current,
-                DescriptorSize,
-                HeaderSize);
-            HeaderHandle.Free();
-            Content.CopyTo(Current, DescriptorSize + HeaderSize);
-            WriteAvailableBytes(Current);
+            byte[] RawBytes = new byte[HeaderSize + Content.Length];
+            Utilities.StructureToBytes(Header).CopyTo(RawBytes, 0);
+            Content.CopyTo(RawBytes, HeaderSize);
+            PutPacket(RawBytes);
             SignalHost();
         }
 
         public byte[] Receive()
         {
-            byte[] RawBytes = PeekAvailableBytes();
+            byte[] RawBytes = GetPacket();
             if (RawBytes.Length == 0)
             {
                 WaitHost();
                 return Array.Empty<byte>();
             }
-            int DescriptorSize = Marshal.SizeOf<PacketDescriptor>();
             int HeaderSize = Marshal.SizeOf<PipeHeader>();
-            PacketDescriptor Descriptor =
-                Utilities.BytesToStructure<PacketDescriptor>(
-                    RawBytes.Take(DescriptorSize).ToArray());
-            if (Descriptor.Type != PacketType.DataInBand)
-            {
-                throw new Exception("Unexpected PacketType");
-            }
-            PipeHeader Header =
-                Utilities.BytesToStructure<PipeHeader>(
-                    RawBytes.Skip(DescriptorSize).Take(HeaderSize).ToArray());
+            PipeHeader Header = Utilities.BytesToStructure<PipeHeader>(
+                RawBytes.Take(HeaderSize).ToArray());
             if (Header.Type != PipeMessageType.Data)
             {
                 throw new Exception("Unexpected PipeMessageType");
             }
-            int ContentSize = Convert.ToInt32(Header.DataSize);
-            byte[] RawContent =
-                RawBytes.Skip(DescriptorSize + HeaderSize).ToArray();
-            if (RawContent.Length < ContentSize)
+            int Size = Convert.ToInt32(Header.DataSize);
+            if (RawBytes.Length < HeaderSize + Size)
             {
-                WaitHost();
-                return Array.Empty<byte>();
+                throw new Exception("Unexpected DataSize");
             }
-            byte[] Content = RawContent.Take(ContentSize).ToArray();
-            CommitReadOperation(Descriptor.Length + sizeof(ulong));
+            byte[] Content = RawBytes.Skip(HeaderSize).Take(Size).ToArray();
             SignalHost();
             return Content;
         }
