@@ -132,8 +132,6 @@ namespace HvGin
             }
             // Write to RingControlBlock's Out field.
             Accessor.Write(IncomingControlOffset + sizeof(uint), FinalOut);
-            // Signal to Host
-            SignalHost();
         }
 
         private int WriteAvailableBytes(
@@ -185,30 +183,6 @@ namespace HvGin
                 OutgoingControlOffset,
                 FinalWriteOffset);
             return WriteSize;
-        }
-
-        private void WriteBytes(
-            byte[] Content)
-        {
-            int ProcessedSize = 0;
-            int UnprocessedSize = Content.Length;
-            byte[] Current = Content;
-            while (UnprocessedSize != 0)
-            {
-                int CurrentSize = WriteAvailableBytes(Current);
-                if (CurrentSize > 0)
-                {
-                    ProcessedSize += CurrentSize;
-                    UnprocessedSize -= CurrentSize;
-                    Current = new byte[UnprocessedSize];
-                    Array.Copy(
-                        Content,
-                        ProcessedSize,
-                        Current,
-                        0,
-                        UnprocessedSize);
-                }
-            }
         }
 
         [DllImport("libc", SetLastError = true)]
@@ -333,7 +307,7 @@ namespace HvGin
                 HeaderSize);
             HeaderHandle.Free();
             Content.CopyTo(Current, DescriptorSize + HeaderSize);
-            WriteBytes(Current);
+            WriteAvailableBytes(Current);
             SignalHost();
         }
 
@@ -371,6 +345,7 @@ namespace HvGin
             }
             byte[] Content = RawContent.Take(ContentSize).ToArray();
             CommitReadOperation(Descriptor.Length + sizeof(ulong));
+            SignalHost();
             return Content;
         }
     }
