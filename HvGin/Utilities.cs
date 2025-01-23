@@ -51,5 +51,17 @@ namespace HvGin
             Console.WriteLine(BitConverter.ToString(Bytes).Replace("-", " "));
             Console.WriteLine(LowerTag);
         }
+
+        [DllImport("libc", EntryPoint = "read", SetLastError = true)]
+        public static extern int PosixRead(
+            int FileDescriptor,
+            byte[] Buffer,
+            int Count);
+
+        [DllImport("libc", EntryPoint = "write", SetLastError = true)]
+        public static extern int PosixWrite(
+            int FileDescriptor,
+            byte[] Buffer,
+            int Count);
     }
 }
