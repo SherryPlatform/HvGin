@@ -111,18 +111,17 @@ namespace HvGin
                     {
                         try
                         {
-                            byte[] Content = DataChannel.Receive();
-                            if (Content.Length == 0)
+                            byte[] ReceiveContent = DataChannel.Receive();
+                            if (ReceiveContent.Length != 0)
                             {
-                                continue;
+                                if (DebugMode)
+                                {
+                                    Utilities.PrintBytes(
+                                        "VMBus -> TCP",
+                                        ReceiveContent);
+                                }
+                                RdpServerSocket.Send(ReceiveContent);
                             }
-                            if (DebugMode)
-                            {
-                                Utilities.PrintBytes(
-                                    "VMBus -> TCP",
-                                    Content);
-                            }
-                            RdpServerSocket.Send(Content);
                         }
                         catch (Exception e)
                         {
@@ -134,28 +133,28 @@ namespace HvGin
 
                 Thread Tcp2VmbusThread = new Thread(() =>
                 {
-                    byte[] Buffer = new byte[16384];
+                    byte[] SendBuffer = new byte[16384];
                     while (ShouldRunning)
                     {
                         try
                         {
-                            if (RdpServerSocket.Available == 0)
+                            if (RdpServerSocket.Available != 0)
                             {
-                                continue;
+                                Array.Clear(SendBuffer, 0, SendBuffer.Length);
+                                int Count = RdpServerSocket.Receive(
+                                    SendBuffer,
+                                    SendBuffer.Length,
+                                    SocketFlags.None);
+                                byte[] SendContent =
+                                    SendBuffer.Take(Count).ToArray();
+                                if (DebugMode)
+                                {
+                                    Utilities.PrintBytes(
+                                        "TCP -> VMBus",
+                                        SendContent);
+                                }
+                                DataChannel.Send(SendContent);
                             }
-                            Array.Clear(Buffer, 0, Buffer.Length);
-                            int Count = RdpServerSocket.Receive(
-                                Buffer,
-                                Buffer.Length,
-                                SocketFlags.None);
-                            byte[] Content = Buffer.Take(Count).ToArray();
-                            if (DebugMode)
-                            {
-                                Utilities.PrintBytes(
-                                    "TCP -> VMBus",
-                                    Content);
-                            }
-                            DataChannel.Send(Content);
                         }
                         catch (Exception e)
                         {
