@@ -178,50 +178,42 @@ namespace HvGin
             Accessor.Write(OutgoingControlOffset, FinalIn);
         }
 
-        [DllImport("libc", SetLastError = true)]
-        private static extern long write(
-            int fd,
-            byte[] buffer,
-            ulong count);
-
-        public void SignalHost()
+        public void InterruptControl(
+            bool Enable)
         {
-            byte[] Bytes = BitConverter.GetBytes(1);
-            long result = write(
+            byte[] RawBytes = BitConverter.GetBytes(Enable ? 1 : 0);
+            int Result = Utilities.PosixWrite(
                 FileDescriptor,
-                Bytes,
-                Convert.ToUInt64(Bytes.Length));
-            if (result != Bytes.Length)
+                RawBytes,
+                RawBytes.Length);
+            if (Result != RawBytes.Length)
             {
-                throw new Exception("SignalHost Failed");
+                throw new Exception("InterruptControl Failed");
             }
         }
 
-        [DllImport("libc", SetLastError = true)]
-        private static extern long pread(
-            int fd,
-            byte[] buffer,
-            ulong count,
-            long offset);
+        public int WaitInterrupt()
+        {
+            byte[] RawBytes = new byte[sizeof(int)];
+            int Result = Utilities.PosixRead(
+                FileDescriptor,
+                RawBytes,
+                RawBytes.Length);
+            if (Result != RawBytes.Length)
+            {
+                throw new Exception("WaitInterrupt Failed");
+            }
+            return BitConverter.ToInt32(RawBytes, 0);
+        }
+
+        public void SignalHost()
+        {
+            InterruptControl(true);
+        }
 
         public void WaitHost()
         {
-            byte[] Bytes = BitConverter.GetBytes(1);
-            long result = pread(
-                FileDescriptor,
-                Bytes,
-                Convert.ToUInt64(Bytes.Length),
-                0);
-            if (result < 0)
-            {
-                const int EINTR = 4;
-                const int EAGAIN = 11;
-                int Errno = Marshal.GetLastWin32Error();
-                if (Errno != EINTR && Errno != EAGAIN)
-                {
-                    throw new Exception("WaitHost Failed");
-                }
-            }
+            WaitInterrupt();
         }
 
         public UioHvDevice(
