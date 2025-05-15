@@ -40,6 +40,14 @@ namespace HvGin
             }
             RingControlBlock Result;
             Accessor.Read(AccessorOffset, out Result);
+            if (Result.In > DataMaximumSize)
+            {
+                Result.In = Convert.ToUInt32(DataMaximumSize);
+            }
+            if (Result.Out > DataMaximumSize)
+            {
+                Result.Out = Convert.ToUInt32(DataMaximumSize);
+            }
             return Result;
         }
 
@@ -168,11 +176,7 @@ namespace HvGin
                 SecondWriteSize > 0
                 ? SecondWriteSize
                 : ControlBlock.In + RawBytes.Length);
-            Accessor.WriteArray(
-                OutgoingDataOffset + FinalIn,
-                BitConverter.GetBytes(ControlBlock.In),
-                0,
-                sizeof(uint));
+            Accessor.Write(OutgoingDataOffset + FinalIn, ControlBlock.In);
             FinalIn += sizeof(ulong);
             // Write to RingControlBlock's In field.
             Accessor.Write(OutgoingControlOffset, FinalIn);
@@ -245,13 +249,10 @@ namespace HvGin
                     MapItem.Offset,
                     MapItem.Size);
 
-                byte[] RawMask = BitConverter.GetBytes(0);
                 // Write to RingControlBlock's InterruptMask field.
-                Accessor.WriteArray(
+                Accessor.Write(
                     IncomingControlOffset + (2 * sizeof(uint)),
-                    RawMask,
-                    0,
-                    RawMask.Length);
+                    0);
 
                 return;
             }
