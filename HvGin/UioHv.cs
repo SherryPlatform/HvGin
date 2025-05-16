@@ -1,4 +1,6 @@
-﻿namespace HvGin
+﻿using System.Runtime.InteropServices;
+
+namespace HvGin
 {
     internal class UioHv
     {
@@ -65,5 +67,14 @@
                 }
             }
         }
+
+        public static readonly int PacketDescriptorSize =
+            Marshal.SizeOf<PacketDescriptor>();
+
+        public static readonly int PipeHeaderSize =
+            Marshal.SizeOf<PipeHeader>();
+
+        public static readonly int PipePacketHeaderSize =
+            PacketDescriptorSize + PipeHeaderSize;
     }
 }

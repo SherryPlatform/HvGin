@@ -40,14 +40,6 @@ namespace HvGin
             }
             RingControlBlock Result;
             Accessor.Read(AccessorOffset, out Result);
-            if (Result.In > DataMaximumSize)
-            {
-                Result.In = Convert.ToUInt32(DataMaximumSize);
-            }
-            if (Result.Out > DataMaximumSize)
-            {
-                Result.Out = Convert.ToUInt32(DataMaximumSize);
-            }
             return Result;
         }
 
@@ -65,17 +57,16 @@ namespace HvGin
             return (DataMaximumSize - WritableSize, WritableSize);
         }
 
-        private byte[] GetPacket()
+        public byte[] PopPipePacket()
         {
             RingControlBlock ControlBlock =
                 GetRingControlBlock(IncomingControlOffset);
             int AvailableSize =
                 GetAvailableSizeInformation(ControlBlock).Read;
-            if (AvailableSize == 0)
+            if (AvailableSize < UioHv.PipePacketHeaderSize)
             {
                 return Array.Empty<byte>();
             }
-            byte[] RawBytes = new byte[AvailableSize];
             int FirstReadSize = AvailableSize;
             int SecondReadSize = 0;
             if (ControlBlock.In < ControlBlock.Out)
@@ -88,98 +79,148 @@ namespace HvGin
                     SecondReadSize = AvailableSize - FragileSize;
                 }
             }
+            byte[] AvailableBytes = new byte[AvailableSize];
             Accessor.ReadArray(
                 IncomingDataOffset + ControlBlock.Out,
-                RawBytes,
+                AvailableBytes,
                 0,
                 FirstReadSize);
             if (SecondReadSize > 0)
             {
                 Accessor.ReadArray(
                     IncomingDataOffset,
-                    RawBytes,
+                    AvailableBytes,
                     FirstReadSize,
                     SecondReadSize);
             }
             PacketDescriptor Descriptor =
-                Utilities.BytesToStructure<PacketDescriptor>(RawBytes);
-            int Size = Descriptor.Length + sizeof(ulong);
-            if (RawBytes.Length < Size)
-            {
-                throw new Exception("Unexpected PacketSize");
-            }
+                Utilities.BytesToStructure<PacketDescriptor>(AvailableBytes);
             if (Descriptor.Type != PacketType.DataInBand)
             {
                 throw new Exception("Unexpected PacketType");
             }
-            uint FinalOut = Convert.ToUInt32(ControlBlock.Out + Size);
+            if (Descriptor.DataOffset < UioHv.PacketDescriptorSize ||
+                Descriptor.DataOffset > AvailableBytes.Length ||
+                Descriptor.DataOffset > Descriptor.Length)
+            {
+                throw new Exception("Unexpected DataOffset");
+            }
+            int ActualPacketSize = Descriptor.Length + sizeof(ulong);
+            if (AvailableBytes.Length < ActualPacketSize)
+            {
+                throw new Exception("Unexpected PacketSize");
+            }
+            AvailableBytes = AvailableBytes.Skip(
+                Descriptor.DataOffset).ToArray();
+            PipeHeader Header =
+                Utilities.BytesToStructure<PipeHeader>(AvailableBytes);
+            if (Header.Type != PipeMessageType.Data)
+            {
+                throw new Exception("Unexpected PipeMessageType");
+            }
+            int PipeDataSize = Convert.ToInt32(Header.DataSize);
+            if (AvailableBytes.Length < UioHv.PipeHeaderSize + PipeDataSize)
+            {
+                throw new Exception("Unexpected DataSize");
+            }
+            byte[] Content = AvailableBytes.Skip(
+                UioHv.PipeHeaderSize).Take(PipeDataSize).ToArray();
+            uint FinalOffset = Convert.ToUInt32(
+                ControlBlock.Out + ActualPacketSize);
             if (ControlBlock.In < ControlBlock.Out)
             {
                 int FragileSize =
                     DataMaximumSize - Convert.ToInt32(ControlBlock.Out);
-                if (FragileSize < Size)
+                if (FragileSize < ActualPacketSize)
                 {
-                    FinalOut = Convert.ToUInt32(Size - FragileSize);
+                    FinalOffset = Convert.ToUInt32(
+                        ActualPacketSize - FragileSize);
                 }
             }
             // Write to RingControlBlock's Out field.
-            Accessor.Write(IncomingControlOffset + sizeof(uint), FinalOut);
-            return RawBytes.Skip(Descriptor.DataOffset).ToArray();
+            Accessor.Write(IncomingControlOffset + sizeof(uint), FinalOffset);
+            return Content;
         }
 
-        private void PutPacket(
-            byte[] Content)
+        public int GetMaximumPushSize()
         {
-            PacketDescriptor Descriptor = new PacketDescriptor();
-            Descriptor.Type = PacketType.DataInBand;
-            Descriptor.DataOffset = Marshal.SizeOf<PacketDescriptor>();
-            Descriptor.Length = Descriptor.DataOffset + Content.Length;
-            Descriptor.CompletionRequested = false;
-            Descriptor.TransactionId = ulong.MaxValue;
-            byte[] RawBytes = new byte[Descriptor.Length];
-            Utilities.StructureToBytes(Descriptor).CopyTo(RawBytes, 0);
-            Content.CopyTo(RawBytes, Descriptor.DataOffset);
+            const int MaximumPushSize = 16384;
             RingControlBlock ControlBlock =
                GetRingControlBlock(OutgoingControlOffset);
             int AvailableSize =
                 GetAvailableSizeInformation(ControlBlock).Write;
-            if (AvailableSize < RawBytes.Length + sizeof(ulong))
+            AvailableSize -= UioHv.PipePacketHeaderSize + sizeof(ulong);
+            AvailableSize -= AvailableSize % sizeof(ulong);
+            return AvailableSize < 0
+                ? 0
+                : Math.Min(AvailableSize, MaximumPushSize);
+        }
+
+        public void PushPipePacket(
+            byte[] Content)
+        {
+            PacketDescriptor Descriptor = new PacketDescriptor();
+            Descriptor.Type = PacketType.DataInBand;
+            Descriptor.DataOffset = UioHv.PacketDescriptorSize;
+            Descriptor.Length = UioHv.PipePacketHeaderSize + Content.Length;
+            Descriptor.CompletionRequested = false;
+            Descriptor.TransactionId = ulong.MaxValue;
+            PipeHeader Header = new PipeHeader();
+            Header.Type = PipeMessageType.Data;
+            Header.DataSize = Convert.ToUInt32(Content.Length);
+            int PacketSize = Descriptor.Length + sizeof(ulong);
+            RingControlBlock ControlBlock =
+               GetRingControlBlock(OutgoingControlOffset);
+            int AvailableSize =
+                GetAvailableSizeInformation(ControlBlock).Write;
+            if (AvailableSize < PacketSize)
             {
                 throw new Exception("Insufficient Space");
             }
-            int FirstWriteSize = RawBytes.Length;
+            byte[] PacketBytes = new byte[PacketSize];
+            Utilities.StructureToBytes(Descriptor).CopyTo(
+                PacketBytes,
+                0);
+            Utilities.StructureToBytes(Header).CopyTo(
+                PacketBytes,
+                UioHv.PacketDescriptorSize);
+            Content.CopyTo(
+                PacketBytes,
+                UioHv.PipePacketHeaderSize);
+            BitConverter.GetBytes(ControlBlock.In).CopyTo(
+                PacketBytes,
+                PacketBytes.Length - sizeof(ulong));
+            int FirstWriteSize = PacketBytes.Length;
             int SecondWriteSize = 0;
             if (ControlBlock.In >= ControlBlock.Out)
             {
                 int FragileSize =
                     DataMaximumSize - Convert.ToInt32(ControlBlock.In);
-                if (FragileSize < RawBytes.Length)
+                if (FragileSize < PacketBytes.Length)
                 {
                     FirstWriteSize = FragileSize;
-                    SecondWriteSize = RawBytes.Length - FragileSize;
+                    SecondWriteSize = PacketBytes.Length - FragileSize;
                 }
             }
             Accessor.WriteArray(
                 OutgoingDataOffset + ControlBlock.In,
-                RawBytes,
+                PacketBytes,
                 0,
                 FirstWriteSize);
             if (SecondWriteSize > 0)
             {
                 Accessor.WriteArray(
                     OutgoingDataOffset,
-                    RawBytes,
+                    PacketBytes,
                     FirstWriteSize,
                     SecondWriteSize);
             }
-            uint FinalIn = Convert.ToUInt32(
+            uint FinalOffset = Convert.ToUInt32(
                 SecondWriteSize > 0
                 ? SecondWriteSize
-                : ControlBlock.In + RawBytes.Length);
-            Accessor.Write(OutgoingDataOffset + FinalIn, ControlBlock.In);
-            FinalIn += sizeof(ulong);
+                : ControlBlock.In + PacketBytes.Length);
             // Write to RingControlBlock's In field.
-            Accessor.Write(OutgoingControlOffset, FinalIn);
+            Accessor.Write(OutgoingControlOffset, FinalOffset);
         }
 
         public void InterruptControl(
@@ -196,18 +237,25 @@ namespace HvGin
             }
         }
 
-        public int WaitInterrupt()
+        public bool WaitInterrupt()
         {
             byte[] RawBytes = new byte[sizeof(int)];
             int Result = Utilities.PosixRead(
                 FileDescriptor,
                 RawBytes,
                 RawBytes.Length);
-            if (Result != RawBytes.Length)
+            if (Result < 0)
             {
-                throw new Exception("WaitInterrupt Failed");
+                const int EINTR = 4;
+                const int EAGAIN = 11;
+                int ErrorCode = Marshal.GetLastWin32Error();
+                if (ErrorCode != EINTR && ErrorCode != EAGAIN)
+                {
+                    throw new Exception("WaitInterrupt Failed");
+                }
+                return false;
             }
-            return BitConverter.ToInt32(RawBytes, 0);
+            return true;
         }
 
         public void SignalHost()
@@ -262,38 +310,18 @@ namespace HvGin
         public void Send(
             byte[] Content)
         {
-            int HeaderSize = Marshal.SizeOf<PipeHeader>();
-            PipeHeader Header = new PipeHeader();
-            Header.Type = PipeMessageType.Data;
-            Header.DataSize = Convert.ToUInt32(Content.Length);
-            byte[] RawBytes = new byte[HeaderSize + Content.Length];
-            Utilities.StructureToBytes(Header).CopyTo(RawBytes, 0);
-            Content.CopyTo(RawBytes, HeaderSize);
-            PutPacket(RawBytes);
+            PushPipePacket(Content);
             SignalHost();
         }
 
         public byte[] Receive()
         {
-            byte[] RawBytes = GetPacket();
-            if (RawBytes.Length == 0)
+            byte[] Content = PopPipePacket();
+            if (Content.Length == 0)
             {
                 WaitHost();
                 return Array.Empty<byte>();
             }
-            int HeaderSize = Marshal.SizeOf<PipeHeader>();
-            PipeHeader Header = Utilities.BytesToStructure<PipeHeader>(
-                RawBytes.Take(HeaderSize).ToArray());
-            if (Header.Type != PipeMessageType.Data)
-            {
-                throw new Exception("Unexpected PipeMessageType");
-            }
-            int Size = Convert.ToInt32(Header.DataSize);
-            if (RawBytes.Length < HeaderSize + Size)
-            {
-                throw new Exception("Unexpected DataSize");
-            }
-            byte[] Content = RawBytes.Skip(HeaderSize).Take(Size).ToArray();
             SignalHost();
             return Content;
         }

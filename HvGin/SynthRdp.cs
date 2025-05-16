@@ -111,7 +111,7 @@ namespace HvGin
                     {
                         try
                         {
-                            byte[] ReceiveContent = DataChannel.Receive();
+                            byte[] ReceiveContent = DataChannel.PopPipePacket();
                             if (ReceiveContent.Length != 0)
                             {
                                 if (DebugMode)
@@ -133,14 +133,16 @@ namespace HvGin
 
                 Thread Tcp2VmbusThread = new Thread(() =>
                 {
-                    byte[] SendBuffer = new byte[16384];
                     while (ShouldRunning)
                     {
                         try
                         {
-                            if (RdpServerSocket.Available != 0)
+                            int MaximumSendSize = Math.Min(
+                                RdpServerSocket.Available,
+                                DataChannel.GetMaximumPushSize());
+                            if (MaximumSendSize > 0)
                             {
-                                Array.Clear(SendBuffer, 0, SendBuffer.Length);
+                                byte[] SendBuffer = new byte[MaximumSendSize];
                                 int Count = RdpServerSocket.Receive(
                                     SendBuffer,
                                     SendBuffer.Length,
@@ -153,7 +155,8 @@ namespace HvGin
                                         "TCP -> VMBus",
                                         SendContent);
                                 }
-                                DataChannel.Send(SendContent);
+                                DataChannel.PushPipePacket(SendContent);
+                                DataChannel.SignalHost();
                             }
                         }
                         catch (Exception e)
