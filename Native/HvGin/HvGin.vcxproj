@@ -23,8 +23,14 @@
     <RemoteIntRelDir>Output/Objects/$(Configuration)/$(MSBuildProjectName)/$(Platform)</RemoteIntRelDir>
     <RemoteDeployDir>$(RemoteRootDir)</RemoteDeployDir>
   </PropertyGroup>
+  <PropertyGroup>
+    <IncludePath>$(MSBuildThisFileDirectory)Mile.Mobility\;$(IncludePath)</IncludePath>
+  </PropertyGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Mile.Mobility\Mile.Mobility.Portable.Types.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
