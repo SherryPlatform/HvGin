@@ -25,11 +25,17 @@
   </PropertyGroup>
   <PropertyGroup>
     <IncludePath>$(MSBuildThisFileDirectory)Mile.Mobility\;$(IncludePath)</IncludePath>
+    <IncludePath>$(MSBuildThisFileDirectory)Mile.HyperV\;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Mile.HyperV\Mile.HyperV.Guest.Interface.h" />
+    <ClInclude Include="Mile.HyperV\Mile.HyperV.Guest.Protocols.h" />
+    <ClInclude Include="Mile.HyperV\Mile.HyperV.Portable.Types.h" />
+    <ClInclude Include="Mile.HyperV\Mile.HyperV.TLFS.h" />
+    <ClInclude Include="Mile.HyperV\Mile.HyperV.VMBus.h" />
     <ClInclude Include="Mile.Mobility\Mile.Mobility.Portable.Types.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
