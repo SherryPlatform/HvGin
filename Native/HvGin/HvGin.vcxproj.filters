@@ -7,10 +7,28 @@
     <Filter Include="Mile.Mobility">
       <UniqueIdentifier>{bae20806-fc82-46e0-8a38-db426f4facc0}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Mile.HyperV">
+      <UniqueIdentifier>{a1ca310a-3cc0-46bf-93bf-a6ff781208df}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Mile.Mobility.Portable.Types.h">
+    <ClInclude Include="Mile.Mobility\Mile.Mobility.Portable.Types.h">
       <Filter>Mile.Mobility</Filter>
+    </ClInclude>
+    <ClInclude Include="Mile.HyperV\Mile.HyperV.Guest.Interface.h">
+      <Filter>Mile.HyperV</Filter>
+    </ClInclude>
+    <ClInclude Include="Mile.HyperV\Mile.HyperV.Guest.Protocols.h">
+      <Filter>Mile.HyperV</Filter>
+    </ClInclude>
+    <ClInclude Include="Mile.HyperV\Mile.HyperV.Portable.Types.h">
+      <Filter>Mile.HyperV</Filter>
+    </ClInclude>
+    <ClInclude Include="Mile.HyperV\Mile.HyperV.TLFS.h">
+      <Filter>Mile.HyperV</Filter>
+    </ClInclude>
+    <ClInclude Include="Mile.HyperV\Mile.HyperV.VMBus.h">
+      <Filter>Mile.HyperV</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
