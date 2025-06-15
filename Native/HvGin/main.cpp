@@ -29,19 +29,32 @@ namespace Mile
         _In_ char const* const Format,
         _In_ va_list ArgList)
     {
+        int Length = 0;
+
         // Get the length of the format result.
-        int Length = std::vsnprintf(nullptr, 0, Format, ArgList);
+        {
+            va_list CurrentArgList;
+            va_copy(CurrentArgList, ArgList);
+            Length = std::vsnprintf(nullptr, 0, Format, CurrentArgList);
+            va_end(CurrentArgList);
+        }
         if (Length > 0)
         {
             // Allocate for the format result.
-            std::string Buffer(static_cast<std::size_t>(Length), '\0');
+            std::string Buffer;
+            Buffer.resize(static_cast<std::size_t>(Length));
 
             // Format the string.
-            Length = std::vsnprintf(
-                &Buffer[0],
-                Buffer.size() + 1,
-                Format,
-                ArgList);
+            {
+                va_list CurrentArgList;
+                va_copy(CurrentArgList, ArgList);
+                Length = std::vsnprintf(
+                    &Buffer[0],
+                    Buffer.size() + 1,
+                    Format,
+                    CurrentArgList);
+                va_end(CurrentArgList);
+            }
             if (Length > 0)
             {
                 // If succeed, resize to fit and return result.
