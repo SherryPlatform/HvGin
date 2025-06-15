@@ -105,7 +105,7 @@ EXTERN_C int MOAPI HvGinMountPlan9ReadOnlyShareWithHyperVSocket(
                 sizeof(SendBufferSize)))
             {
                 Success = (0 == ::mount(
-                    MountPoint,
+                    AccessName,
                     MountPoint,
                     "9p",
                     MS_RDONLY,
