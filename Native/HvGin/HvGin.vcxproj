@@ -32,7 +32,10 @@
     <ClCompile>
       <PreprocessorDefinitions Condition="'$(Platform)'=='x64'">_M_AMD64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(Platform)'=='ARM64'">_M_ARM64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalOptions>-Wno-vla-extension-static-assert -Wno-gnu-folding-constant %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalWarnings Condition="'$(PlatformToolset)'=='Remote_GCC_1_0'">no-multichar;</AdditionalWarnings>
+      <AdditionalWarnings Condition="'$(PlatformToolset)'=='Remote_Clang_1_0'">no-vla-extension-static-assert;no-gnu-folding-constant;</AdditionalWarnings>
+      <CAdditionalWarning>%(AdditionalWarnings);%(CAdditionalWarning)</CAdditionalWarning>
+      <CppAdditionalWarning>%(AdditionalWarnings);%(CppAdditionalWarning)</CppAdditionalWarning>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
