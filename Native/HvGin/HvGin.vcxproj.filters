@@ -2,6 +2,9 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Mile.Posix.Helpers\Mile.Helpers.CppBase.cpp">
+      <Filter>Mile.Posix.Helpers</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Mile.Mobility">
@@ -9,6 +12,9 @@
     </Filter>
     <Filter Include="Mile.HyperV">
       <UniqueIdentifier>{a1ca310a-3cc0-46bf-93bf-a6ff781208df}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Mile.Posix.Helpers">
+      <UniqueIdentifier>{363362ba-bf70-4724-998a-81f32f1209e3}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -29,6 +35,9 @@
     </ClInclude>
     <ClInclude Include="Mile.HyperV\Mile.HyperV.VMBus.h">
       <Filter>Mile.HyperV</Filter>
+    </ClInclude>
+    <ClInclude Include="Mile.Posix.Helpers\Mile.Helpers.CppBase.h">
+      <Filter>Mile.Posix.Helpers</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
