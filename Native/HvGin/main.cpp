@@ -14,7 +14,7 @@
 #include <cstdio>
 #include <cstring>
 
-EXTERN_C int MOAPI HvGinMountPlan9ReadOnlyShareWithHyperVSocket(
+EXTERN_C int MOAPI HvGinMountHcsPlan9ReadOnlyShare(
     _In_ MO_UINT32 Port,
     _In_ MO_CONSTANT_STRING AccessName,
     _In_ MO_CONSTANT_STRING MountPoint)
@@ -76,11 +76,11 @@ int main()
         std::printf("HvGin is running on Microsoft Hyper-V!\n");
     }
 
-    int Result = ::HvGinMountPlan9ReadOnlyShareWithHyperVSocket(
+    int Result = ::HvGinMountHcsPlan9ReadOnlyShare(
         50001,
         "HostDriverStore",
         "/home/mouri/dxguser/HostDriverStore");
-    std::printf("HvGinMountPlan9ReadOnlyShareWithHyperVSocket returns %d\n", Result);
+    std::printf("HvGinMountHcsPlan9ReadOnlyShare returns %d\n", Result);
 
     // doas ln -s /home/mouri/dxguser/wsl /usr/lib/wsl
     // mkdir -p /home/mouri/dxguser/wsl
