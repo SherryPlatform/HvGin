@@ -61,6 +61,57 @@ EXTERN_C int MOAPI HvGinMountHcsPlan9ReadOnlyShare(
     return Success ? 0 : errno;
 }
 
+EXTERN_C int MOAPI HvGinUioRegisterDevice(
+    _In_ PMO_GUID ClassId)
+{
+    if (!ClassId)
+    {
+        return EINVAL;
+    }
+
+    int ErrorCode = 0;
+
+    FILE* FileObject = std::fopen(
+        "/sys/bus/vmbus/drivers/uio_hv_generic/new_id",
+        "w");
+    if (FileObject)
+    {
+        // "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+        const int GuidStringLength = 36;
+
+        int Result = std::fprintf(
+            FileObject,
+            "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+            ClassId->Data1,
+            ClassId->Data2,
+            ClassId->Data3,
+            ClassId->Data4[0],
+            ClassId->Data4[1],
+            ClassId->Data4[2],
+            ClassId->Data4[3],
+            ClassId->Data4[4],
+            ClassId->Data4[5],
+            ClassId->Data4[6],
+            ClassId->Data4[7]);
+        if (Result < 0)
+        {
+            ErrorCode = errno;
+        }
+        else if (GuidStringLength != Result)
+        {
+            ErrorCode = EIO;
+        }
+
+        std::fclose(FileObject);
+    }
+    else
+    {
+        ErrorCode = errno;
+    }
+
+    return ErrorCode;
+}
+
 int main()
 {
     HV_CPUID_RESULT HvCpuIdResult;
