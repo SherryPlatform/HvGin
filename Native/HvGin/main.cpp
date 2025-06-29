@@ -19,7 +19,7 @@ EXTERN_C int MOAPI HvGinMountHcsPlan9ReadOnlyShare(
     _In_ MO_CONSTANT_STRING AccessName,
     _In_ MO_CONSTANT_STRING MountPoint)
 {
-    bool Success = false;
+    int ErrorCode = 0;
 
     int Socket = ::socket(AF_VSOCK, SOCK_STREAM, 0);
     if (-1 != Socket)
@@ -41,7 +41,7 @@ EXTERN_C int MOAPI HvGinMountHcsPlan9ReadOnlyShare(
                 &SendBufferSize,
                 sizeof(SendBufferSize)))
             {
-                Success = (0 == ::mount(
+                if (0 != ::mount(
                     AccessName,
                     MountPoint,
                     "9p",
@@ -51,14 +51,29 @@ EXTERN_C int MOAPI HvGinMountHcsPlan9ReadOnlyShare(
                         Socket,
                         Socket,
                         SendBufferSize,
-                        AccessName).c_str()));
+                        AccessName).c_str()))
+                {
+                    ErrorCode = errno;
+                }
             }
+            else
+            {
+                ErrorCode = errno;
+            }
+            }
+        else
+        {
+            ErrorCode = errno;
         }
 
         ::close(Socket);
     }
+    else
+    {
+        ErrorCode = errno;
+    }
 
-    return Success ? 0 : errno;
+    return ErrorCode;
 }
 
 EXTERN_C int MOAPI HvGinUioRegisterDevice(
