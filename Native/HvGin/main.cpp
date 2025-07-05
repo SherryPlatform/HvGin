@@ -14,10 +14,12 @@
 #include <cstdio>
 #include <cstring>
 
-EXTERN_C int MOAPI HvGinMountHcsPlan9ReadOnlyShare(
+EXTERN_C int MOAPI HvGinMountHcsPlan9Share(
     _In_ MO_UINT32 Port,
     _In_ MO_CONSTANT_STRING AccessName,
-    _In_ MO_CONSTANT_STRING MountPoint)
+    _In_ MO_CONSTANT_STRING MountPoint,
+    _In_ MO_BOOL ReadOnly,
+    _In_ MO_UINT32 BufferSize)
 {
     int ErrorCode = 0;
 
@@ -33,24 +35,23 @@ EXTERN_C int MOAPI HvGinMountHcsPlan9ReadOnlyShare(
             reinterpret_cast<sockaddr*>(&SocketAddress),
             sizeof(SocketAddress)))
         {
-            int SendBufferSize = 65536;
             if (0 == ::setsockopt(
                 Socket,
                 SOL_SOCKET,
                 SO_SNDBUF,
-                &SendBufferSize,
-                sizeof(SendBufferSize)))
+                &BufferSize,
+                sizeof(BufferSize)))
             {
                 if (0 != ::mount(
                     AccessName,
                     MountPoint,
                     "9p",
-                    MS_RDONLY,
+                    ReadOnly ? MS_RDONLY : 0,
                     Mile::FormatString(
                         "trans=fd,rfdno=%d,wfdno=%d,msize=%d,noload,aname=%s",
                         Socket,
                         Socket,
-                        SendBufferSize,
+                        BufferSize,
                         AccessName).c_str()))
                 {
                     ErrorCode = errno;
@@ -142,10 +143,12 @@ int main()
         std::printf("HvGin is running on Microsoft Hyper-V!\n");
     }
 
-    int Result = ::HvGinMountHcsPlan9ReadOnlyShare(
+    int Result = ::HvGinMountHcsPlan9Share(
         50001,
         "HostDriverStore",
-        "/home/mouri/dxguser/HostDriverStore");
+        "/home/mouri/dxguser/HostDriverStore",
+        MO_TRUE,
+        65536);
     std::printf("HvGinMountHcsPlan9ReadOnlyShare returns %d\n", Result);
 
     // doas ln -s /home/mouri/dxguser/wsl /usr/lib/wsl
