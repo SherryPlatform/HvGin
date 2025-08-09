@@ -32,6 +32,7 @@
 #pragma warning(push)
 #endif
 #pragma warning(disable:4201) // nameless struct/union
+#pragma warning(disable:4324) // structure was padded due to __declspec(align())
 #endif
 
 // *****************************************************************************
@@ -263,6 +264,9 @@ typedef HV_UINT64 HV_GVA, *PHV_GVA;
 // The HVC immediate below is handled by the Microvisor for GICv3 support in the
 // absence of the full Hypervisor.
 #define HV_ARM64_ENABLE_SRE 2
+
+// Vendor-specific reset types
+#define HV_ARM64_SYSTEM_RESET2_FIRMWARE_CRASH 0x80000001
 #elif defined(_M_AMD64) || defined(_M_IX86)
 #define HV_X64_PAGE_SIZE 4096
 #define HV_X64_LARGE_PAGE_SIZE 0x200000
@@ -847,9 +851,9 @@ typedef struct _HV_ARM64_HYPERVISOR_CPU_MANAGEMENT_FEATURES
     HV_UINT32 RootManagedIdleStates : 1;
     HV_UINT32 Reserved1 : 30;
 
-    HV_UINT32 Reserved2;
+    HV_UINT32 ReservedEcx;
 
-    HV_UINT32 Reserved3;
+    HV_UINT32 ReservedEdx;
 } HV_ARM64_HYPERVISOR_CPU_MANAGEMENT_FEATURES, *PHV_ARM64_HYPERVISOR_CPU_MANAGEMENT_FEATURES;
 typedef HV_ARM64_HYPERVISOR_CPU_MANAGEMENT_FEATURES _HV_HYPERVISOR_CPU_MANAGEMENT_FEATURES;
 typedef HV_ARM64_HYPERVISOR_CPU_MANAGEMENT_FEATURES HV_HYPERVISOR_CPU_MANAGEMENT_FEATURES;
@@ -1285,8 +1289,7 @@ typedef enum _HV_MESSAGE_TYPE
     HvMessageTypeX64Halt = 0x80010007,
     HvMessageTypeX64InterruptionDeliverable = 0x80010008,
     HvMessageTypeX64SipiIntercept = 0x80010009,
-#endif
-#if defined(_M_ARM64)
+#elif defined(_M_ARM64)
     HvMessageTypeArm64ResetIntercept = 0x80010000,
 #endif
 } HV_MESSAGE_TYPE, *PHV_MESSAGE_TYPE;
@@ -1520,7 +1523,7 @@ typedef union _HV_CONNECTION_ID
     struct
     {
         HV_UINT32 Id : 24;
-        HV_UINT32 Reserved : 8;
+        HV_UINT32 Reserved : 6;
         HV_UINT32 Scope : 2;
     };
 } HV_CONNECTION_ID, *PHV_CONNECTION_ID;
@@ -2004,7 +2007,7 @@ typedef struct HV_CALL_ATTRIBUTES _HV_INPUT_SIGNAL_EVENT
 {
     HV_CONNECTION_ID ConnectionId;
     HV_UINT16 FlagNumber;
-    HV_UINT16 RsvdZ[7];
+    HV_UINT16 RsvdZ[3];
 } HV_INPUT_SIGNAL_EVENT, *PHV_INPUT_SIGNAL_EVENT;
 
 // Hypervisor register names for accessing a virtual processor's registers.
@@ -2685,6 +2688,7 @@ typedef struct HV_CALL_ATTRIBUTES _HV_INPUT_MODIFY_SPARSE_GPA_PAGE_HOST_VISIBILI
 #pragma warning(pop)
 #else
 #pragma warning(default:4201) // nameless struct/union
+#pragma warning(default:4324) // structure was padded due to __declspec(align())
 #endif
 #endif
 
